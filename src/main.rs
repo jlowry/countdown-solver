@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     collections::{HashMap, HashSet, VecDeque},
     fs::{self, File},
     io::{stdin, stdout, BufReader, Write},
@@ -9,15 +8,8 @@ use serde_json::Value;
 
 fn main() {
     println!("Loading words...");
-    let mut words = HashMap::<String, Vec<Cow<str>>>::new();
-    load_words(|key, word| {
-        let word = Cow::from(word.to_string());
-        words
-            .entry(key)
-            .and_modify(|words| words.push(word.clone()))
-            .or_insert_with(|| vec![word]);
-    });
-    println!("Words loaded.");
+    let words = load_words();
+    println!("{} words loaded.", words.values().len());
 
     let mut lines = stdin().lines();
     loop {
@@ -40,12 +32,9 @@ fn main() {
     }
 }
 
-fn find_words_q<'a>(
-    words: &HashMap<String, Vec<Cow<'a, str>>>,
-    sorted: &str,
-) -> Option<Vec<Cow<'a, str>>> {
-    let mut found_words = HashSet::<Cow<str>>::new();
-    let mut q = VecDeque::<String>::new(); // a queue of nodes
+fn find_words_q<'a>(words: &'a HashMap<String, Vec<String>>, sorted: &str) -> Option<Vec<&'a str>> {
+    let mut found_words = HashSet::<&str>::new();
+    let mut q = VecDeque::<String>::new();
     q.push_front(sorted.to_string());
     let mut best_len = 0;
     while !q.is_empty() {
@@ -55,7 +44,7 @@ fn find_words_q<'a>(
                 break;
             }
             best_len = words.first().unwrap().len();
-            found_words.extend(words.iter().cloned())
+            found_words.extend(words.iter().map(|s| s.as_str()));
         }
         for i in 0..v.len() {
             let chars = v.chars().collect::<Vec<_>>();
@@ -80,7 +69,8 @@ fn find_words_q<'a>(
     None
 }
 
-fn load_words<F: FnMut(String, Cow<str>)>(mut store: F) {
+fn load_words() -> HashMap<String, Vec<String>> {
+    let mut words = HashMap::<String, Vec<String>>::new();
     let paths = fs::read_dir("./wordset-dictionary/data")
         .unwrap()
         .filter_map(|r| r.ok())
@@ -93,11 +83,14 @@ fn load_words<F: FnMut(String, Cow<str>)>(mut store: F) {
                 for (_, v) in obj {
                     match &v["word"] {
                         Value::String(s) => {
-                            let word = Cow::from(s);
+                            let word = s;
                             let mut sorted = s.chars().collect::<Vec<_>>();
                             sorted.sort();
                             let key = String::from_iter(sorted);
-                            store(key, word);
+                            words
+                                .entry(key)
+                                .and_modify(|words| words.push(word.to_string()))
+                                .or_insert_with(|| vec![word.to_string()]);
                         }
                         _ => println!("Unexpected JSON value"),
                     }
@@ -106,5 +99,5 @@ fn load_words<F: FnMut(String, Cow<str>)>(mut store: F) {
             _ => println!("Unexpected JSON value"),
         }
     }
-    // map
+    words
 }
